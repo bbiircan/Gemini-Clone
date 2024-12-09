@@ -1,11 +1,14 @@
 const typingForm = document.querySelector(".typing-form");
 const chatList = document.querySelector(".chat-list");
+const suggestions = document.querySelectorAll(".suggestion-list .suggestion");
 const toggleThemeButton = document.querySelector("#toggle-theme-button");
+const deleteChatButton = document.querySelector("#delete-chat-button");
 
 let userMessage = null;
+let isResponseGenerating = false;
 
 // API configuration
-const API_KEY = "AIzaSyAzCSxjJ8SWXUn8E4rRb6pkH_--SiF5SWM";
+const API_KEY = "";
 const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${API_KEY}`;
 
 const loadLocalstorageData = () => {
@@ -18,6 +21,8 @@ const loadLocalstorageData = () => {
 
     // Restore saved chats
     chatList.innerHTML = savedChats || "";
+
+    document.body.classList.toggle("hide-header", savedChats);
     chatList.scrollTo(0, chatList.scrollHeight); // Scroll to the bottom
 }
 
@@ -44,6 +49,7 @@ const showTypingEffect = (text, textElement, incomingMessageDiv) => {
         // If all words are displayed
         if(currentWordIndex === words.length){
             clearInterval(typingInterval);
+            isResponseGenerating = false;
             incomingMessageDiv.querySelector(".icon").classList.remove("hide");
             localStorage.setItem("savedChats", chatList.innerHTML); // Save chats to local storage
         }
@@ -69,12 +75,15 @@ try {
     })
 
     const data = await response.json();
+    if(!response.ok) throw new Error(data.error.message);
 
     // Get the API response text and remove asterisks from it
     const apiResponse = data?.candidates[0].content.parts[0].text.replace(/\*\*(.*?)\*\*/g, '$1');
     showTypingEffect(apiResponse, textElement, incomingMessageDiv);
 } catch (error) {
-    console.log(error)
+    isResponseGenerating = false;
+    textElement.innerText = error.message;
+    textElement.classList.add("error");
 } finally {
     incomingMessageDiv.classList.remove("loading");
 }
@@ -112,8 +121,10 @@ const copyMessage = (copyIcon) => {
 
 // Handle sending outgoing chat messages
 const handleOutgoingChat = () => {
-    userMessage = typingForm.querySelector(".typing-input").value.trim();
-    if(!userMessage) return; // Exit if there is no message 
+    userMessage = typingForm.querySelector(".typing-input").value.trim() || userMessage;
+    if(!userMessage || isResponseGenerating) return; // Exit if there is no message 
+
+    isResponseGenerating = true;
 
     const html = ` <div class="message-content">
                 <img src="images/user.jpeg" alt="User Image" class="avatar">
@@ -126,15 +137,32 @@ const handleOutgoingChat = () => {
 
     typingForm.reset(); // Clear input field
     chatList.scrollTo(0, chatList.scrollHeight); // Scroll to the bottom
+    document.body.classList.add("hide-header"); // Hide the header once chat start
     setTimeout(showLoadingAnimation, 500); // Show loading animation after a delay
 }
+
+// Set userMessage and handle outgoing chat when a suggestion is clicked
+suggestions.forEach(suggestion => {
+    suggestion.addEventListener("click", () => {
+        userMessage = suggestion.querySelector(".text").innerText;
+        handleOutgoingChat();
+    })
+})
 
 // Toggle between light and dark themes
 toggleThemeButton.addEventListener("click", () => {
     const isLightMode = document.body.classList.toggle("light_mode");
     localStorage.setItem("themeColor", isLightMode ? "light_mode" : "dark_mode");
     toggleThemeButton.innerText = isLightMode ? "dark_mode" : "light_mode";
-})
+});
+
+// Delete all chats from local storage when button is clicked
+deleteChatButton.addEventListener("click", () => {
+    if(confirm("Are you sure you want to delete all messages?")) {
+        localStorage.removeItem("savedChats");
+        loadLocalstorageData();
+    }
+});
 
 // Prevent default form submission and handle outgoing chat
 typingForm.addEventListener("submit", (e) => {
